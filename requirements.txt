@@ -1,0 +1,5 @@
+flask==3.0.2
+moviepy==1.0.3
+python-magic==0.4.27
+Werkzeug==3.0.1
+SpeechRecognition==3.10.1 

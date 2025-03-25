@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频声音提取器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover {
+            border-color: #666;
+            background-color: #f9f9f9;
+        }
+        .upload-area.dragover {
+            border-color: #4CAF50;
+            background-color: #e8f5e9;
+        }
+        #file-input {
+            display: none;
+        }
+        .btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        .error {
+            color: #f44336;
+            margin-top: 10px;
+            display: none;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .result-container {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: none;
+        }
+        .result-container h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .transcription {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+        }
+        .download-btn {
+            margin-top: 10px;
+            background-color: #2196F3;
+        }
+        .download-btn:hover {
+            background-color: #1976D2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>视频声音提取器</h1>
+        <div class="upload-area" id="drop-zone">
+            <p>将视频文件拖放到此处，或点击选择文件</p>
+            <input type="file" id="file-input" accept=".mp4,.avi,.mov,.mkv,.wmv,.flv">
+            <button class="btn" onclick="document.getElementById('file-input').click()">选择文件</button>
+        </div>
+        <div class="error" id="error-message"></div>
+        <div class="loading" id="loading"></div>
+        <div class="result-container" id="result-container">
+            <h2>处理结果</h2>
+            <div class="transcription" id="transcription"></div>
+            <button class="btn download-btn" id="download-btn">下载音频文件</button>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const errorMessage = document.getElementById('error-message');
+        const loading = document.getElementById('loading');
+        const resultContainer = document.getElementById('result-container');
+        const transcription = document.getElementById('transcription');
+        const downloadBtn = document.getElementById('download-btn');
+
+        // 拖拽事件处理
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            // 检查文件类型
+            const allowedTypes = ['video/mp4', 'video/avi', 'video/quicktime', 'video/x-matroska', 'video/x-ms-wmv', 'video/x-flv'];
+            if (!allowedTypes.includes(file.type)) {
+                showError('请上传有效的视频文件');
+                return;
+            }
+
+            // 检查文件大小（16MB限制）
+            if (file.size > 16 * 1024 * 1024) {
+                showError('文件大小不能超过16MB');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // 显示加载动画
+            loading.style.display = 'block';
+            errorMessage.style.display = 'none';
+            resultContainer.style.display = 'none';
+
+            // 发送文件到服务器
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || '上传失败');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // 显示识别结果
+                transcription.textContent = data.text;
+                resultContainer.style.display = 'block';
+                
+                // 设置下载按钮
+                downloadBtn.onclick = () => {
+                    window.location.href = data.audio_url;
+                };
+            })
+            .catch(error => {
+                showError(error.message);
+            })
+            .finally(() => {
+                loading.style.display = 'none';
+            });
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+        }
+    </script>
+</body>
+</html> 
