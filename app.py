@@ -7,10 +7,18 @@ import tempfile
 import speech_recognition as sr
 from pydub import AudioSegment
 import shutil
+import threading
+import queue
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+# 增加文件大小限制到100MB
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
 app.config['UPLOAD_FOLDER'] = 'uploads'
+# 设置上传超时时间为300秒
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 300
+# 设置请求超时时间为300秒
+app.config['PERMANENT_SESSION_LIFETIME'] = 300
 
 # 确保上传目录存在
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -26,19 +34,32 @@ def is_video_file(file_path):
     file_type = mime.from_file(file_path)
     return file_type.startswith('video/')
 
-def convert_audio_to_text(audio_path):
+def extract_audio(video_path, audio_path):
+    video = VideoFileClip(video_path)
+    video.audio.write_audiofile(audio_path)
+    video.close()
+
+def recognize_speech(audio_path):
     recognizer = sr.Recognizer()
-    
+    with sr.AudioFile(audio_path) as source:
+        audio_data = recognizer.record(source)
+        return recognizer.recognize_google(audio_data, language='zh-CN')
+
+def convert_audio_to_text(audio_path):
     # 将音频转换为 WAV 格式（SpeechRecognition 需要）
     audio = AudioSegment.from_mp3(audio_path)
     wav_path = audio_path.replace('.mp3', '.wav')
     audio.export(wav_path, format='wav')
     
     try:
-        with sr.AudioFile(wav_path) as source:
-            audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data, language='zh-CN')
-            return text
+        # 使用线程池处理语音识别，设置超时时间为60秒
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(recognize_speech, wav_path)
+            try:
+                text = future.result(timeout=60)  # 60秒超时
+                return text
+            except TimeoutError:
+                return "语音识别超时，请重试"
     except sr.UnknownValueError:
         return "无法识别音频内容"
     except sr.RequestError as e:
@@ -77,10 +98,13 @@ def upload_file():
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_audio_path = os.path.join(temp_dir, f"{os.path.splitext(filename)[0]}.mp3")
             
-            # 提取音频到临时目录
-            video = VideoFileClip(file_path)
-            video.audio.write_audiofile(temp_audio_path)
-            video.close()
+            # 使用线程池处理音频提取，设置超时时间为300秒
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(extract_audio, file_path, temp_audio_path)
+                try:
+                    future.result(timeout=300)  # 5分钟超时
+                except TimeoutError:
+                    return jsonify({'error': '处理文件超时，请尝试上传较小的文件'}), 500
 
             # 进行语音识别
             text = convert_audio_to_text(temp_audio_path)
@@ -98,7 +122,8 @@ def upload_file():
         return jsonify({'error': f'处理文件时出错: {str(e)}'}), 500
     finally:
         # 清理上传的视频文件
-        os.remove(file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
 @app.route('/download_audio/<filename>')
 def download_audio(filename):

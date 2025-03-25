@@ -166,9 +166,9 @@
                 return;
             }
 
-            // 检查文件大小（16MB限制）
-            if (file.size > 16 * 1024 * 1024) {
-                showError('文件大小不能超过16MB');
+            // 检查文件大小（100MB限制）
+            if (file.size > 100 * 1024 * 1024) {
+                showError('文件大小不能超过100MB');
                 return;
             }
 
@@ -180,12 +180,19 @@
             errorMessage.style.display = 'none';
             resultContainer.style.display = 'none';
 
+            // 设置超时处理
+            const timeout = setTimeout(() => {
+                showError('上传超时，请重试');
+                loading.style.display = 'none';
+            }, 300000); // 5分钟超时
+
             // 发送文件到服务器
             fetch('/upload', {
                 method: 'POST',
                 body: formData
             })
             .then(response => {
+                clearTimeout(timeout);
                 if (!response.ok) {
                     return response.json().then(data => {
                         throw new Error(data.error || '上传失败');
@@ -204,9 +211,11 @@
                 };
             })
             .catch(error => {
+                clearTimeout(timeout);
                 showError(error.message);
             })
             .finally(() => {
+                clearTimeout(timeout);
                 loading.style.display = 'none';
             });
         }
