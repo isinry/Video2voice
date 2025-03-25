@@ -50,3 +50,6 @@ python app.py
 - 确保上传的视频文件大小不超过16MB
 - 支持的文件格式：MP4、AVI、MOV、MKV、WMV、FLV
 - 处理大文件可能需要一些时间，请耐心等待 
+
+
+## 待开发功能 [TODOLIST](./TODOLIST.md)
