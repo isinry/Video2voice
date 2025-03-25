@@ -12,6 +12,7 @@
 - [x] 创建README.md文档
 - [x] 创建TODOLIST.md文件
 - [x] 添加音频转文字功能
+- [x] 将HTML格式的指令示例转换为Markdown格式
 
 ## 待完成任务
 - [ ] 添加进度条显示
